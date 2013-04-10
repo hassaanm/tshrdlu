@@ -66,7 +66,7 @@ class Bot extends Actor with ActorLogging {
 
   val twitter = new TwitterFactory().getInstance
   val replierManager = context.actorOf(Props[ReplierManager], name = "ReplierManager")
-
+  /*
   val streamReplier = context.actorOf(Props[StreamReplier], name = "StreamReplier")
   val synonymReplier = context.actorOf(Props[SynonymReplier], name = "SynonymReplier")
   val synonymStreamReplier = context.actorOf(Props[SynonymStreamReplier], name = "SynonymStreamReplier")
@@ -77,8 +77,11 @@ class Bot extends Actor with ActorLogging {
   val sudoReplier = context.actorOf(Props[SudoReplier], name = "SudoReplier")
   val twssReplier = context.actorOf(Props[TWSSReplier], name = "TWSSReplier")
   val sentimentReplier = context.actorOf(Props[SentimentReplier], name = "SentimentReplier")
+  */
+  val businessReplier = context.actorOf(Props[BusinessReplier], name = "BusinessReplier")
 
   override def preStart {
+    /*
     replierManager ! RegisterReplier(streamReplier)
     replierManager ! RegisterReplier(synonymReplier)
     replierManager ! RegisterReplier(synonymStreamReplier)
@@ -89,7 +92,8 @@ class Bot extends Actor with ActorLogging {
     replierManager ! RegisterReplier(sudoReplier)
     replierManager ! RegisterReplier(twssReplier)
     replierManager ! RegisterReplier(sentimentReplier)
-
+    */
+    replierManager ! RegisterReplier(businessReplier)
     // Attempt to create the LocationResolver actor
     Option(System.getenv("TSHRDLU_GEONAMES_USERNAME")) match {
       case Some(geoNamesUsername) =>

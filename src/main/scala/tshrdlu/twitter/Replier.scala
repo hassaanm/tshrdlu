@@ -32,6 +32,34 @@ trait BaseReplier extends Actor with ActorLogging {
 
 }
 
+class BusinessReplier extends BaseReplier {
+    import Bot._
+    import TwitterRegex._
+    import tshrdlu.util.{CompanyData, English, SimpleTokenizer}
+    
+    import context.dispatcher
+    import scala.concurrent.duration._
+    import scala.concurrent.Future
+    import akka.pattern._
+    import akka.util._
+    
+    def getReplies(status: Status, maxLength: Int = 140): Future[Seq[String]] = {
+        log.info("I'm all business.")
+        val text = stripLeadMention(status.getText).toLowerCase()
+        val importantWords = SimpleTokenizer(text)
+                .filterNot(English.stopwords.contains(_))
+        log.info(importantWords.mkString(" "))
+        val companies = (for(word <- importantWords) yield CompanyData.compToSym.get(word))
+            .flatten
+            .flatten
+        Future(Seq(companies.mkString(" ")))
+    }
+    
+    def main (args: Array[String]) {
+        
+    }
+}
+
 /**
  * An actor that constructs replies to a given status.
  */
