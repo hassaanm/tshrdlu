@@ -311,7 +311,8 @@ object CompanyData {
             
     lazy val symToComp = getCompData("nasdaq.csv") ++ getCompData("nyse.csv")
     lazy val compToSym = (for ((sym, comp) <- symToComp) yield {
-            for (word <- comp.split(",? +")) yield (word.toLowerCase(), sym.trim())
+            val symMap = (sym.toLowerCase, sym)
+            (for (word <- comp.split(",?( +|\\.)")) yield (word.toLowerCase(), sym.trim())) ++ List(symMap)
         }).flatten
         .groupBy(_._1)
         .mapValues(_.map(_._2))

@@ -60,6 +60,7 @@ class BusinessReplier extends BaseReplier {
             .toList
             .sortBy(-_._2)
             .map(_._1)
+        log.info("Companies: " + companies.mkString(","))
         val symbol = companies.head
         val compName = CompanyData.symToComp.getOrElse(symbol, "")
 
@@ -93,8 +94,10 @@ class BusinessReplier extends BaseReplier {
         val intro = company.take(40) + " (" + symbol + "), "
         val lastPrice = "Price: " + price + ", "
         val priceOutlook = "Outlook: " + (if (price > 0.7) "Good" else if (avgSentiment < 0.3) "Bad" else "OK") + ", "
-        val sentiment = "Opinion: " + (if (avgSentiment > 0.1) "Good" else if (avgSentiment < -0.1) "Bad" else "OK") + ", "
+        val sentiment = "Opinion: " + (if (avgSentiment > 0.01) "Good" else if (avgSentiment < -0.01) "Bad" else "OK") + ", "
         val yahooLink = "Info: " + shortenURL("""http://finance.yahoo.com/q?s=""" + symbol)
+        
+        log.info("Sentiment: " + avgSentiment)
 
         val response = intro + lastPrice + priceOutlook + sentiment + yahooLink
         log.info("SentimentReplier responding with: " + response)
