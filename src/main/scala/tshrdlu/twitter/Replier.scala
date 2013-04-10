@@ -52,7 +52,14 @@ class BusinessReplier extends BaseReplier {
         val companies = (for(word <- importantWords) yield CompanyData.compToSym.get(word))
             .flatten
             .flatten
-        Future(Seq(companies.mkString(" ")))
+            .groupBy(identity)
+            .mapValues(_.size)
+            .toList
+            .sortBy(-_._2)
+            .map(_._1)
+        val topCompany = companies.head
+        val compName = CompanyData.symToComp.getOrElse(topCompany, "")
+        Future(Seq(topCompany + " - " + compName))
     }
     
     def main (args: Array[String]) {
