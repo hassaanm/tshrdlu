@@ -35,13 +35,16 @@ trait BaseReplier extends Actor with ActorLogging {
 class BusinessReplier extends BaseReplier {
     import Bot._
     import TwitterRegex._
-    import tshrdlu.util.{CompanyData, English, SimpleTokenizer}
+    import tshrdlu.util.{CompanyData, English, Polarity, SimpleTokenizer}
     
     import context.dispatcher
     import scala.concurrent.duration._
     import scala.concurrent.Future
     import akka.pattern._
     import akka.util._
+
+    lazy val polarity = new Polarity()
+    implicit val timeout = Timeout(10 seconds)
     
     def getReplies(status: Status, maxLength: Int = 140): Future[Seq[String]] = {
         log.info("I'm all business.")
@@ -57,15 +60,55 @@ class BusinessReplier extends BaseReplier {
             .toList
             .sortBy(-_._2)
             .map(_._1)
-        val topCompany = companies.head
-        val compName = CompanyData.symToComp.getOrElse(topCompany, "")
-        Future(Seq(topCompany + " - " + compName))
-    }
-    
-    def main (args: Array[String]) {
-        
+        val symbol = companies.head
+        val compName = CompanyData.symToComp.getOrElse(symbol, "")
+
+        val statusList =
+            List(symbol, compName)
+            .map(w => (context.parent ? SearchTwitter(new Query(w))).mapTo[Seq[Status]])
+
+        val statusesFuture: Future[Seq[Status]] = Future.sequence(statusList).map(_.toSeq.flatten)
+
+        statusesFuture
+            .map(status => extractText(status, symbol, compName))
+            .map(_.filter(_.length <= maxLength))
     }
 
+    def extractText(statusList: Seq[Status], symbol: String, company: String): Seq[String] = {
+        val useableTweets = statusList
+            .map(_.getText)
+            .map {
+                case StripMentionsRE(rest) => rest
+                case x => x
+            }
+            .filterNot(_.contains('@'))
+            .filterNot(_.contains('/'))
+            .filter(tshrdlu.util.English.isEnglish)
+            .filter(tshrdlu.util.English.isSafe)
+
+        val sentimentVals = for (tweet <- useableTweets) yield getSentiment(tweet)
+        val avgSentiment = sentimentVals.sum / sentimentVals.length
+        val (price, outlook) = symbolInfo(symbol)
+
+        val intro = company.take(40) + " (" + symbol + "), "
+        val lastPrice = "Price: " + price + ", "
+        val priceOutlook = "Outlook: " + (if (price > 0.7) "Good" else if (avgSentiment < 0.3) "Bad" else "OK") + ", "
+        val sentiment = "Opinion: " + (if (avgSentiment > 0.1) "Good" else if (avgSentiment < -0.1) "Bad" else "OK") + ", "
+        val yahooLink = "Info: " + shortenURL("""http://finance.yahoo.com/q?s=""" + symbol)
+
+        val response = intro + lastPrice + priceOutlook + sentiment + yahooLink
+        log.info("SentimentReplier responding with: " + response)
+        Seq(response)
+    }
+
+    def getSentiment(text: String): Double = {
+        val words = SimpleTokenizer(text)
+        val len = words.length.toDouble
+        val percentPositive = words.count(polarity.posWords.contains) / len
+        val percentNegative = words.count(polarity.negWords.contains) / len
+        (percentPositive - percentNegative)
+    }
+    
     def stockInfo(jsonData: Option[Any], key: String): String = {
         (jsonData match { case Some(m: Map[String, Any]) => m("query") match { case n: Map[String, Any] => n("results") match { case o: Map[String, Any] => o("quote") match { case p: Map[String, Any] => p(key) } } } }).toString
     }
@@ -99,7 +142,6 @@ class BusinessReplier extends BaseReplier {
             case e: Exception => "http://yhoo.it/12GRbyV"
         }
     }
-
 }
 
 /**
