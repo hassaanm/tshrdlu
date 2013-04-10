@@ -58,6 +58,41 @@ class BusinessReplier extends BaseReplier {
     def main (args: Array[String]) {
         
     }
+
+    def stockInfo(jsonData: Option[Any], key: String): String = {
+        (jsonData match { case Some(m: Map[String, Any]) => m("query") match { case n: Map[String, Any] => n("results") match { case o: Map[String, Any] => o("quote") match { case p: Map[String, Any] => p(key) } } } }).toString
+    }
+
+    def symbolInfo(symbol: String): (Double, Double) = {
+        val url = """http://query.yahooapis.com/v1/public/yql?env=http%3A%2F%2Fdatatables.org%2Falltables.env&format=json&q=select%20*%20from%20yahoo.finance.quote%20where%20symbol%20in%20(%22""" + symbol + """%22)"""
+
+        val json = scala.io.Source.fromURL(url).mkString
+        val jsonData = scala.util.parsing.json.JSON.parseFull(json)
+
+        val price = stockInfo(jsonData, "LastTradePriceOnly").toDouble
+        val yearLow = stockInfo(jsonData, "YearLow").toDouble
+        val yearHigh = stockInfo(jsonData, "YearHigh").toDouble
+
+        val range = yearHigh - yearLow
+        val outlook = (price - yearLow) / range
+
+        (price, outlook)
+    }
+
+    def shortenURL(longUrl: String): String = {
+        //apiKey & login of a user
+        val apiKey = "R_ee66228a251785ba2a1dd5ea1499712e"
+        val login = "hassaanm"
+
+        val link ="http://api.bit.ly/v3/shorten?format=txt&login="+login+"&apiKey="+apiKey+"&longUrl="+longUrl
+        try {
+            val shortUrl = scala.io.Source.fromURL(link).mkString
+            shortUrl.trim
+        } catch  {
+            case e: Exception => "http://yhoo.it/12GRbyV"
+        }
+    }
+
 }
 
 /**
