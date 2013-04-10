@@ -301,3 +301,25 @@ object TWSSModel {
   def apply() : Model = model
 }
 
+object CompanyData {
+    lazy val resourceDir = "/companies/"
+    def getCompData(filename: String) =
+        Resource.asSource(resourceDir+filename)
+            .getLines
+            .map(l => {
+                val parts = l.split(",", 2)
+                (parts(0), parts(1).replaceAll("\"", ""))
+            }).toMap
+            
+    lazy val symToComp = getCompData("nasdaq.csv") ++ getCompData("nyse.csv")
+    lazy val compToSym = (for ((sym, comp) <- symToComp) yield {
+            for (word <- comp.split(",? +")) yield (word.toLowerCase(), sym.trim())
+        }).flatten
+        .groupBy(_._1)
+        .mapValues(_.map(_._2))
+        .toMap
+        
+    def main (args: Array[String]) {
+        println(compToSym.toList.sortBy(_._1).mkString("\n"))
+    }
+}
