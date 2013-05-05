@@ -48,6 +48,8 @@ class BusinessReplier extends BaseReplier {
     lazy val bitlyFile = scala.io.Source.fromFile("bitly.properties").getLines.toList
     lazy val apiKey : String = bitlyFile(0)
     lazy val login : String = bitlyFile(1)
+    lazy val nytimesFile = scala.io.Source.fromFile("nytimes.properties").getLines.toList
+    lazy val nytimesApiKey : String = nytimesFile(0)
     implicit val timeout = Timeout(10 seconds)
     
     def getReplies(status: Status, maxLength: Int = 140): Future[Seq[String]] = {
@@ -156,6 +158,10 @@ class BusinessReplier extends BaseReplier {
         } catch  {
             case e: Exception => "http://yhoo.it/12GRbyV"
         }
+    }
+
+    def getArticles(company: String): List[String] = {
+        val link = "http://api.nytimes.com/svc/search/v2/articlesearch.json?q=" + company.replaceAll(" ", "+") + "&sort=newest&api-key=" + nytimesApiKey
     }
 }
 
