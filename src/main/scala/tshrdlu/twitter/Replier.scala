@@ -44,8 +44,8 @@ class BusinessReplier extends BaseReplier {
     import akka.util._
 
     lazy val polarity = new Polarity()
-    lazy val negationWords = List("no", "not")
-    lazy val bitlyFile = scala.io.Source.fromFile("src/main/resources/bitly.properties").getLines.toList
+    lazy val negationWords = List("no", "not", "dont", "cant", "shouldnt", "couldnt", "wouldnt")
+    lazy val bitlyFile = scala.io.Source.fromFile("bitly.properties").getLines.toList
     lazy val apiKey : String = bitlyFile(0)
     lazy val login : String = bitlyFile(1)
     implicit val timeout = Timeout(10 seconds)
