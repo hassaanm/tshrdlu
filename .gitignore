@@ -6,6 +6,7 @@ target/
 .ensime*
 *~
 *.class
+*.swp
 twitter4j.properties
 bitly.properties
 nytimes.properties
