@@ -35,54 +35,109 @@ trait BaseReplier extends Actor with ActorLogging {
 class BusinessReplier extends BaseReplier {
     import Bot._
     import TwitterRegex._
-    import tshrdlu.util.{CompanyData, English, Polarity, SimpleTokenizer, Resource}
+    import tshrdlu.util.{CompanyData, English, Polarity, AlphaNumericTokenizer, Resource}
     
     import context.dispatcher
     import scala.concurrent.duration._
     import scala.concurrent.Future
     import akka.pattern._
     import akka.util._
+    import java.util.Random
 
     lazy val polarity = new Polarity()
-    lazy val negationWords = List("no", "not", "dont", "cant", "shouldnt", "couldnt", "wouldnt")
     lazy val bitlyFile = scala.io.Source.fromFile("bitly.properties").getLines.toList
     lazy val bitlyApiKey : String = bitlyFile(0)
     lazy val bitlyLogin : String = bitlyFile(1)
     implicit val timeout = Timeout(10 seconds)
+
+    lazy val defaultResponses = List(
+      "I'm not sure.",
+      "I'm confused.",
+      "I need some help.",
+      "Please clarify.",
+      "I don't know what you mean.",
+      "Did you ask about a company?",
+      "I'm not sure which company you asked about.",
+      "I can only give information about companies in the NYSE and NASDAQ.",
+      "I couldn't parse that.",
+      "Can you be more specific?",
+      "I'm all business."
+      )
+    lazy val rand = new Random();
     
     def getReplies(status: Status, maxLength: Int = 140): Future[Seq[String]] = {
         log.info("I'm all business.")
         val text = stripLeadMention(status.getText).toLowerCase()
-        val importantWords = SimpleTokenizer(text)
+        val importantWords = AlphaNumericTokenizer(text)
                 .filterNot(English.stopwords.contains(_))
-        log.info(importantWords.mkString(" "))
-        val companies = extractCompanyName(importantWords)
-        log.info("Companies: " + companies.mkString(","))
-        val symbol = companies.head
-        val compName = CompanyData.symToComp.getOrElse(symbol, "")
+        log.info("Searching for companies with the words: " + importantWords.mkString(" "))
+        val extractedCompanies = extractCompanyName(importantWords)
+        val successful = extractedCompanies._1
+        if (successful) {
+            val companies = extractedCompanies._2
+            log.info("Companies: " + companies.mkString(","))
+            val symbol = companies.head
+            val compName = CompanyData.symToComp.getOrElse(symbol, "")
 
-        val statusList =
-            List(symbol, compName)
-            .map(w => (context.parent ? SearchTwitter(new Query(w))).mapTo[Seq[Status]])
+            val statusList =
+                List(symbol, compName)
+                .map(w => (context.parent ? SearchTwitter(new Query(w))).mapTo[Seq[Status]])
 
-        val statusesFuture: Future[Seq[Status]] = Future.sequence(statusList).map(_.toSeq.flatten)
+            val statusesFuture: Future[Seq[Status]] = Future.sequence(statusList).map(_.toSeq.flatten)
 
-        statusesFuture
-            .map(status => extractText(status, symbol, compName))
-            .map(_.filter(_.length <= maxLength))
+            return statusesFuture
+                .map(status => extractText(status, symbol, compName))
+                .map(_.filter(_.length <= maxLength))
+        }
+        else {
+            var confusingWords = extractedCompanies._2
+            if (confusingWords.size == 0) {
+                if(importantWords.size == 0) {
+                    val random_index = rand.nextInt(defaultResponses.size);
+                    val randomResponse = defaultResponses(random_index);
+                    return Future(Seq(randomResponse + " Can you provide the stock symbol?"))
+                }
+                confusingWords = importantWords
+            }
+            if(confusingWords.size > 1)
+                return Future(Seq("I couldn't find a company with the words \"" + confusingWords.take(2).mkString(" ") + "\". Can you provide the stock symbol?"))
+            return Future(Seq("I couldn't find a company with the word \"" + confusingWords.head + "\". Can you provide the stock symbol?"))
+        }
     }
 
-    def extractCompanyName(words: IndexedSeq[String]): List[String] = {
-        val companies = (for(word <- words) yield CompanyData.compToSym.get(word))
+    /* The first element of the tuple indicated whether extraction was successful
+     * If there is an obvious company mentioned, returns a list of length 1 with the company symbol
+     * If there are multiple options, returns a list of the words that are most confusing
+     * If there are no companies found, returns an empty list
+     */
+    def extractCompanyName(words: List[String]): (Boolean, List[String]) = {
+        val companyMentions = (for(word <- words) yield CompanyData.invertedIndex.get(word))
             .flatten
             .flatten
             .groupBy(identity)
-            .mapValues(_.size)
+            .mapValues(x => x.length)
             .toList
             .sortBy(-_._2)
-            .map(_._1)
-        companies
+        if(companyMentions.size == 0)
+            return (false, List[String]())
+        val mostMentions = companyMentions.head._2
+        val topMentionedCompanies = companyMentions.filter(_._2 == mostMentions).map(_._1)
+        log.info("Mentions: " + companyMentions.mkString(", "))
+        log.info("Most mentions: " + topMentionedCompanies.mkString(", "))
+        if(topMentionedCompanies.length == 1 || topMentionedCompanies.length == 0)
+            return (topMentionedCompanies.length == 1, topMentionedCompanies)
+        // We are confused, determine which words confused us
+        val allCompanies = topMentionedCompanies
+            .flatMap(CompanyData.symToComp.get)
+            .map(_.toLowerCase.replaceAll("[^a-zA-Z]+", ""))
+            .mkString(" ")
+        val confusingWords = words.filter(allCompanies.contains).toList
+        log.info("Confusing words: " + confusingWords.mkString(", "))
+        (false, confusingWords)
     }
+
+    def wordImportance(word: String): Double =
+        CompanyData.invertedIndex.getOrElse(word, List[String]()).size.toDouble / CompanyData.invertedIndex.size
 
     def extractText(statusList: Seq[Status], symbol: String, company: String): Seq[String] = {
         val useableTweets = statusList
@@ -93,18 +148,19 @@ class BusinessReplier extends BaseReplier {
             }
             .filterNot(_.contains('@'))
             .filterNot(_.contains('/'))
-            .filter(tshrdlu.util.English.isEnglish)
-            .filter(tshrdlu.util.English.isSafe)
+            .filter(English.isEnglish)
+            .filter(English.isSafe)
 
         val sentimentVals = for (tweet <- useableTweets) yield getSentiment(tweet)
         val avgSentiment = sentimentVals.sum / sentimentVals.length
-        val (price, outlook) = symbolInfo(symbol)
+        val yahooFixedSymbol = symbol.replaceAll("^", "-P")
+        val (price, outlook) = symbolInfo(yahooFixedSymbol)
 
         val intro = company.take(40) + " (" + symbol + "), "
         val lastPrice = "Price: " + price + ", "
-        val priceOutlook = "Outlook: " + (if (price > 0.7) "Good" else if (avgSentiment < 0.3) "Bad" else "OK") + ", "
+        val priceOutlook = "Outlook: " + (if (outlook > 0.7) "Good" else if (outlook < 0.3) "Bad" else "OK") + ", "
         val sentiment = "Opinion: " + (if (avgSentiment > 0.01) "Good" else if (avgSentiment < -0.01) "Bad" else "OK") + ", "
-        val yahooLink = "Info: " + shortenURL("""http://finance.yahoo.com/q?s=""" + symbol)
+        val yahooLink = "Info: " + shortenURL("""http://finance.yahoo.com/q?s=""" + yahooFixedSymbol)
         
         log.info("Sentiment: " + avgSentiment)
 
@@ -114,11 +170,11 @@ class BusinessReplier extends BaseReplier {
     }
 
     def getSentiment(text: String): Double = {
-        val words = SimpleTokenizer(text)
+        val words = AlphaNumericTokenizer(text)
         var numPos = if(polarity.posWords.contains(words(0))) 1 else 0
         var numNeg = if(polarity.negWords.contains(words(0))) 1 else 0
         for(wordSet <- words.sliding(2)){
-            val negate = negationWords.contains(wordSet(0)) || wordSet(0).endsWith("n\'t")
+            val negate = English.negationWords.contains(wordSet(0))
             if (polarity.posWords.contains(wordSet(1))){
                 if(negate) numNeg += 1
                 else numPos += 1

@@ -38,3 +38,11 @@ object SimpleTokenizer {
     .toIndexedSeq
 }
 
+object AlphaNumericTokenizer {
+	def apply(text: String): List[String] = text
+		.replaceAll("[^a-zA-Z0-9]+", " ")
+		.split(" ")
+		.filter(_.size > 0)
+		.toList
+		.map(_.toLowerCase)
+}

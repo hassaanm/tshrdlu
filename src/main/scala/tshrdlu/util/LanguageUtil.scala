@@ -76,6 +76,7 @@ object English extends Language("eng") {
   lazy val vocabularyTWSS = getLexicon("TWSSVocab.txt");
   lazy val vocabulary = getLexicon("masc_vocab.txt.gz") ++ stopwords
   lazy val thesaurus = Thesaurus.read(Resource.asStream("/lang/eng/lexicon/oo_eng_thesaurus.gz"))
+  lazy val negationWords = getLexicon("negationWords.txt")
 
   def isEnglish(text: String) = {
     val words = SimpleTokenizer(removeNonLanguage(text).toLowerCase)
@@ -300,6 +301,8 @@ object TWSSModel {
 }
 
 object CompanyData {
+    import tshrdlu.util.AlphaNumericTokenizer
+
     lazy val resourceDir = "/companies/"
     def getCompData(filename: String) =
         Resource.asSource(resourceDir+filename)
@@ -310,15 +313,16 @@ object CompanyData {
             }).toMap
             
     lazy val symToComp = getCompData("nasdaq.csv") ++ getCompData("nyse.csv")
-    lazy val compToSym = (for ((sym, comp) <- symToComp) yield {
+    lazy val invertedIndex = (for ((sym, comp) <- symToComp) yield {
             val symMap = (sym.toLowerCase, sym)
-            (for (word <- comp.split(",?( +|\\.)")) yield (word.toLowerCase(), sym.trim())) ++ List(symMap)
+            val splitCompName = AlphaNumericTokenizer(comp)
+            (for (word <- splitCompName) yield (word.toLowerCase(), sym.trim())) ++ List(symMap)
         }).flatten
         .groupBy(_._1)
-        .mapValues(_.map(_._2))
+        .mapValues(_.map(_._2).toSet)
         .toMap
         
     def main (args: Array[String]) {
-        println(compToSym.toList.sortBy(_._1).mkString("\n"))
+        println(invertedIndex.toList.sortBy(_._1).mkString(", "))
     }
 }
