@@ -166,7 +166,14 @@ class BusinessReplier extends BaseReplier {
     }
 
     def getArticles(company: String): List[String] = {
-        val link = "http://api.nytimes.com/svc/search/v2/articlesearch.json?q=" + company.replaceAll(" ", "+") + "&sort=newest&api-key=" + nytimesApiKey
+        val url = "http://api.nytimes.com/svc/search/v2/articlesearch.json?q=" + company.replaceAll(" ", "+") + "&sort=newest&api-key=" + nytimesApiKey
+
+        try {
+            val json = scala.io.Source.fromURL(url)
+            List()
+        } catch {
+            case e: Exception => List()
+        }
     }
 }
 
