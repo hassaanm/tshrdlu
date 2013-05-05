@@ -158,6 +158,9 @@ class BusinessReplier extends BaseReplier {
         val yahooFixedSymbol = symbol.replaceAll("^", "-P")
         val (price, outlook) = symbolInfo(yahooFixedSymbol)
 
+        // use articles to determine price outlook
+        val articles = getArticles(company)
+
         val intro = company.take(40) + " (" + symbol + "), "
         val lastPrice = "Price: " + price + ", "
         val priceOutlook = "Outlook: " + (if (outlook > 0.7) "Good" else if (outlook < 0.3) "Bad" else "OK") + ", "
@@ -221,12 +224,78 @@ class BusinessReplier extends BaseReplier {
         }
     }
 
-    def getArticles(company: String): List[String] = {
+    def articleCount(jsonData: Option[Any]): Int = {
+        jsonData match {
+            case Some(m: Map[String, Any]) => m("response") match {
+                case d: Map[String, Any] => d("docs") match {
+                    case l: List[Map[String, Any]] => l.length
+                }
+            }
+        }
+    }
+
+    def articleTitle(jsonData: Option[Any], index: Int): String = {
+        jsonData match {
+            case Some(m: Map[String, Any]) => m("response") match {
+                case d: Map[String, Any] => d("docs") match {
+                    case l: List[Map[String, Any]] => l(index) match {
+                        case a: Map[String, Any] => a("headline") match {
+                            case h: Map[String, String] => h("main")
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    def articleInfo(jsonData: Option[Any], index: Int, key: String): String = {
+        jsonData match {
+            case Some(m: Map[String, Any]) => m("response") match {
+                case d: Map[String, Any] => d("docs") match {
+                    case l: List[Map[String, Any]] => l(index) match {
+                        case a: Map[String, Any] => a(key) match {
+                            case s: String => s
+                            case null => "" 
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    def isArticleBusiness(jsonData: Option[Any], index: Int): Boolean = {
+        val section = jsonData match {
+            case Some(m: Map[String, Any]) => m("response") match {
+                case d: Map[String, Any] => d("docs") match {
+                    case l: List[Map[String, Any]] => l(index) match {
+                        case a: Map[String, Any] => a("section_name") match {
+                            case s: String => s
+                            case null => "" 
+                        }
+                    }
+                }
+            }
+        }
+        (section == "Business Day" || section == "Technology" || section == "Your Money")
+    }
+
+    def getArticles(company: String): Seq[String] = {
         val url = "http://api.nytimes.com/svc/search/v2/articlesearch.json?q=" + company.replaceAll(" ", "+") + "&sort=newest&api-key=" + nytimesApiKey
 
         try {
-            val json = scala.io.Source.fromURL(url)
-            List()
+            val json = scala.io.Source.fromURL(url).mkString
+            val jsonData = scala.util.parsing.json.JSON.parseFull(json)
+            val articles = (for (i <- 0 to (articleCount(jsonData) - 1)) yield {
+                                if (isArticleBusiness(jsonData, i)) {
+                                    articleTitle(jsonData, i) +
+                                    articleInfo(jsonData, i, "lead_paragraph") +
+                                    articleInfo(jsonData, i, "abstract")
+                                }
+                                else {
+                                    ""
+                                }
+                            }).filterNot(List("").contains)
+            articles
         } catch {
             case e: Exception => List()
         }
