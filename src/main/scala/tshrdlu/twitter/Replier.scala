@@ -35,7 +35,7 @@ trait BaseReplier extends Actor with ActorLogging {
 class BusinessReplier extends BaseReplier {
     import Bot._
     import TwitterRegex._
-    import tshrdlu.util.{CompanyData, English, Polarity, SimpleTokenizer}
+    import tshrdlu.util.{CompanyData, English, Polarity, SimpleTokenizer, Resource}
     
     import context.dispatcher
     import scala.concurrent.duration._
@@ -44,6 +44,10 @@ class BusinessReplier extends BaseReplier {
     import akka.util._
 
     lazy val polarity = new Polarity()
+    lazy val negationWords = List("no", "not")
+    lazy val bitlyFile = scala.io.Source.fromFile("src/main/resources/bitly.properties").getLines.toList
+    lazy val apiKey : String = bitlyFile(0)
+    lazy val login : String = bitlyFile(1)
     implicit val timeout = Timeout(10 seconds)
     
     def getReplies(status: Status, maxLength: Int = 140): Future[Seq[String]] = {
@@ -106,10 +110,22 @@ class BusinessReplier extends BaseReplier {
 
     def getSentiment(text: String): Double = {
         val words = SimpleTokenizer(text)
-        val len = words.length.toDouble
-        val percentPositive = words.count(polarity.posWords.contains) / len
-        val percentNegative = words.count(polarity.negWords.contains) / len
-        (percentPositive - percentNegative)
+        var numPos = if(polarity.posWords.contains(words(0))) 1 else 0
+        var numNeg = if(polarity.negWords.contains(words(0))) 1 else 0
+        for(wordSet <- words.sliding(2)){
+            val negate = negationWords.contains(wordSet(0)) || wordSet(0).endsWith("n\'t")
+            if (polarity.posWords.contains(wordSet(1))){
+                if(negate) numNeg += 1
+                else numPos += 1
+            }
+            if (polarity.negWords.contains(wordSet(1))){
+                if(negate) numPos += 1
+                else numNeg += 1
+            }
+        }
+        val sentiment = if (numPos != 0) { numPos.toDouble / (numPos + numNeg) } else 0
+        log.info("Sentiment of \"" + text + "\" = " + sentiment)
+        sentiment
     }
     
     def stockInfo(jsonData: Option[Any], key: String): String = {
@@ -133,10 +149,6 @@ class BusinessReplier extends BaseReplier {
     }
 
     def shortenURL(longUrl: String): String = {
-        //apiKey & login of a user
-        val apiKey = "R_ee66228a251785ba2a1dd5ea1499712e"
-        val login = "hassaanm"
-
         val link ="http://api.bit.ly/v3/shorten?format=txt&login="+login+"&apiKey="+apiKey+"&longUrl="+longUrl
         try {
             val shortUrl = scala.io.Source.fromURL(link).mkString
