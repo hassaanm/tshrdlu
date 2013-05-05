@@ -46,8 +46,8 @@ class BusinessReplier extends BaseReplier {
     lazy val polarity = new Polarity()
     lazy val negationWords = List("no", "not", "dont", "cant", "shouldnt", "couldnt", "wouldnt")
     lazy val bitlyFile = scala.io.Source.fromFile("bitly.properties").getLines.toList
-    lazy val apiKey : String = bitlyFile(0)
-    lazy val login : String = bitlyFile(1)
+    lazy val bitlyApiKey : String = bitlyFile(0)
+    lazy val bitlyLogin : String = bitlyFile(1)
     lazy val nytimesFile = scala.io.Source.fromFile("nytimes.properties").getLines.toList
     lazy val nytimesApiKey : String = nytimesFile(0)
     implicit val timeout = Timeout(10 seconds)
@@ -58,14 +58,7 @@ class BusinessReplier extends BaseReplier {
         val importantWords = SimpleTokenizer(text)
                 .filterNot(English.stopwords.contains(_))
         log.info(importantWords.mkString(" "))
-        val companies = (for(word <- importantWords) yield CompanyData.compToSym.get(word))
-            .flatten
-            .flatten
-            .groupBy(identity)
-            .mapValues(_.size)
-            .toList
-            .sortBy(-_._2)
-            .map(_._1)
+        val companies = extractCompanyName(importantWords)
         log.info("Companies: " + companies.mkString(","))
         val symbol = companies.head
         val compName = CompanyData.symToComp.getOrElse(symbol, "")
@@ -79,6 +72,18 @@ class BusinessReplier extends BaseReplier {
         statusesFuture
             .map(status => extractText(status, symbol, compName))
             .map(_.filter(_.length <= maxLength))
+    }
+
+    def extractCompanyName(words: IndexedSeq[String]): List[String] = {
+        val companies = (for(word <- words) yield CompanyData.compToSym.get(word))
+            .flatten
+            .flatten
+            .groupBy(identity)
+            .mapValues(_.size)
+            .toList
+            .sortBy(-_._2)
+            .map(_._1)
+        companies
     }
 
     def extractText(statusList: Seq[Status], symbol: String, company: String): Seq[String] = {
@@ -151,7 +156,7 @@ class BusinessReplier extends BaseReplier {
     }
 
     def shortenURL(longUrl: String): String = {
-        val link ="http://api.bit.ly/v3/shorten?format=txt&login="+login+"&apiKey="+apiKey+"&longUrl="+longUrl
+        val link ="http://api.bit.ly/v3/shorten?format=txt&login="+bitlyLogin+"&apiKey="+bitlyApiKey+"&longUrl="+longUrl
         try {
             val shortUrl = scala.io.Source.fromURL(link).mkString
             shortUrl.trim
