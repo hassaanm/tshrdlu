@@ -52,6 +52,8 @@ class BusinessReplier extends BaseReplier {
     import java.util.Random
     import nak.NakContext._
     import nak.core._
+    import java.util.Date
+    import java.text.SimpleDateFormat
 
     implicit val timeout = Timeout(10 seconds)
     lazy val polarity = new Polarity()
@@ -245,6 +247,8 @@ class BusinessReplier extends BaseReplier {
         def maxLabelPpa = maxLabel(classifier.labels) _
         val articles = getArticles(company)
         val predictions = for(text <- articles) yield maxLabelPpa(classifier.evalRaw(text))
+        log.info(articles.mkString(", "))
+        log.info(predictions.mkString(", "))
         val priceOutlook = "Outlook: " + (if (predictions.length > 0)
                         predictions.groupBy(x=>x).mapValues(x=>x.length).toSeq.sortBy(-_._2).head._1
                     else
@@ -252,7 +256,7 @@ class BusinessReplier extends BaseReplier {
 
         val symbolText = " (" + symbol + "), "
         val lastPrice = "Price: " + price + ", "
-        val sentiment = "Opinion: " + (if (avgSentiment > 0.01) "Good" else if (avgSentiment < -0.01) "Bad" else "OK") + ", "
+        val sentiment = "Opinion: " + (if (avgSentiment > 0.1) "Good" else if (avgSentiment < -0.1) "Bad" else "OK") + ", "
         val yahooLink = "Info: " + shortenURL("""http://finance.yahoo.com/q?s=""" + yahooFixedSymbol)
         
         log.info("Sentiment: " + avgSentiment)
@@ -295,19 +299,27 @@ class BusinessReplier extends BaseReplier {
         sentiment
     }
     
+    /** Gets the information about a stock given the json object
+      *
+      * @param jsonData the json object containing stock information
+      * @param key string key for the value we want from the json object
+      * @return string containing the desired information
+      */
     def stockInfo(jsonData: Option[Any], key: String): String = {
-        jsonData match { 
-            case Some(m: Map[String, Any]) => m("query") match {
-                case n: Map[String, Any] => n("results") match {
-                    case o: Map[String, Any] => o("quote") match {
-                        case p: Map[String, Any] => p(key) match {
-                            case s: String => s
-                            case null => "0.0"
+        try{
+            jsonData match { 
+                case Some(m: Map[String, Any]) => m("query") match {
+                    case n: Map[String, Any] => n("results") match {
+                        case o: Map[String, Any] => o("quote") match {
+                            case p: Map[String, Any] => p(key) match {
+                                case s: String => s
+                                case null => "0.0"
+                            }
                         }
                     }
                 }
             }
-        }
+        } catch { case e: Exception => "0.0" }
     }
 
     /**
@@ -344,65 +356,119 @@ log.info("13")
             val shortUrl = scala.io.Source.fromURL(link).mkString
             shortUrl.trim
         } catch  {
-            case e: Exception => "http://yhoo.it/12GRbyV"
+            case e: Exception => "http://yhoo.it/12ah1H8"
         }
     }
 
+    /** Gets the number of articles given the json object
+      *
+      * @param jsonData the json object containing article information
+      * @return Int the number of articles contained in the json object
+      */
     def articleCount(jsonData: Option[Any]): Int = {
-        jsonData match {
-            case Some(m: Map[String, Any]) => m("response") match {
-                case d: Map[String, Any] => d("docs") match {
-                    case l: List[Map[String, Any]] => l.length
+        try{
+            jsonData match {
+                case Some(m: Map[String, Any]) => m("response") match {
+                    case d: Map[String, Any] => d("docs") match {
+                        case l: List[Map[String, Any]] => l.length
+                    }
                 }
             }
-        }
+        } catch { case e: Exception => 0 }
     }
 
+    /** Gets the title of the article given the json object
+      *
+      * @param jsonData the json object containing article information
+      * @param index Int the index of the article of interest
+      * @return String the title of the article of interest
+      */
     def articleTitle(jsonData: Option[Any], index: Int): String = {
-        jsonData match {
-            case Some(m: Map[String, Any]) => m("response") match {
-                case d: Map[String, Any] => d("docs") match {
-                    case l: List[Map[String, Any]] => l(index) match {
-                        case a: Map[String, Any] => a("headline") match {
-                            case h: Map[String, String] => h("main")
+        try{
+            jsonData match {
+                case Some(m: Map[String, Any]) => m("response") match {
+                    case d: Map[String, Any] => d("docs") match {
+                        case l: List[Map[String, Any]] => l(index) match {
+                            case a: Map[String, Any] => a("headline") match {
+                                case h: Map[String, String] => h("main")
+                            }
                         }
                     }
                 }
             }
-        }
+        } catch { case e: Exception => "" }
     }
 
+    /** Gets about an article given the json object
+      *
+      * @param jsonData the json object containing article information
+      * @param index Int the index of the article of interest
+      * @param key string key for the value we want from the json object
+      * @return String the value of the information wanted
+      */
     def articleInfo(jsonData: Option[Any], index: Int, key: String): String = {
-        jsonData match {
-            case Some(m: Map[String, Any]) => m("response") match {
-                case d: Map[String, Any] => d("docs") match {
-                    case l: List[Map[String, Any]] => l(index) match {
-                        case a: Map[String, Any] => a(key) match {
-                            case s: String => s
-                            case null => "" 
+        try {
+            jsonData match {
+                case Some(m: Map[String, Any]) => m("response") match {
+                    case d: Map[String, Any] => d("docs") match {
+                        case l: List[Map[String, Any]] => l(index) match {
+                            case a: Map[String, Any] => a(key) match {
+                                case s: String => s
+                                case null => "" 
+                            }
                         }
                     }
                 }
             }
-        }
+        } catch { case e: Exception => "" }
     }
 
-    def isArticleBusiness(jsonData: Option[Any], index: Int): Boolean = {
-        val section = jsonData match {
-            case Some(m: Map[String, Any]) => m("response") match {
-                case d: Map[String, Any] => d("docs") match {
-                    case l: List[Map[String, Any]] => l(index) match {
-                        case a: Map[String, Any] => a("section_name") match {
-                            case s: String => s
-                            case null => "" 
+    /** Determines if an article is valid given the json object
+      *
+      * @param jsonData the json object containing article information
+      * @param index Int the index of the article of interest
+      * @return Boolean to indicate whether an article is valid or not
+      */
+    def isArticleValid(jsonData: Option[Any], index: Int): Boolean = {
+        try{
+            val section = jsonData match {
+                case Some(m: Map[String, Any]) => m("response") match {
+                    case d: Map[String, Any] => d("docs") match {
+                        case l: List[Map[String, Any]] => l(index) match {
+                            case a: Map[String, Any] => a("section_name") match {
+                                case s: String => s
+                                case null => "" 
+                            }
                         }
                     }
                 }
             }
-        }
-        (section == "Business Day" || section == "Technology" || section == "Your Money")
+            val date = jsonData match {
+                case Some(m: Map[String, Any]) => m("response") match {
+                    case d: Map[String, Any] => d("docs") match {
+                        case l: List[Map[String, Any]] => l(index) match {
+                            case a: Map[String, Any] => a("pub_date") match {
+                                case s: String => s
+                                case null => "2000-01-01T00:00:00Z" 
+                            }
+                        }
+                    }
+                }
+            }
+            val properDate = date.substring(0, 10) + "-" + date.substring(11,19)
+            val articleDate = new SimpleDateFormat("yyyy-MM-dd-HH:mm:ss").parse(properDate)
+            val twoWeeks = new Date(new Date().getTime() - 1209600000)
+
+            (section == "Business Day" || section == "Technology" || section == "Your Money") &&
+            (articleDate.after(twoWeeks))
+        } catch { case e: Exception => false }
     }
 
+    /** Gets the recent article snippets from the NY Times about the company
+      *
+      * @param company string name of the company
+      * @return Seq[String] a list of the snippets of the articles
+      */
     def getArticles(company: String): Seq[String] = {
         val url = "http://api.nytimes.com/svc/search/v2/articlesearch.json?q=" + company.replaceAll(" ", "+") + "&sort=newest&api-key=" + nytimesApiKey
 
@@ -410,7 +476,7 @@ log.info("13")
             val json = scala.io.Source.fromURL(url).mkString
             val jsonData = scala.util.parsing.json.JSON.parseFull(json)
             val articles = (for (i <- 0 to (articleCount(jsonData) - 1)) yield {
-                                if (isArticleBusiness(jsonData, i)) {
+                                if (isArticleValid(jsonData, i)) {
                                     articleTitle(jsonData, i) +
                                     articleInfo(jsonData, i, "lead_paragraph") +
                                     articleInfo(jsonData, i, "abstract")
@@ -420,9 +486,7 @@ log.info("13")
                                 }
                             }).filterNot(List("").contains)
             articles
-        } catch {
-            case e: Exception => List()
-        }
+        } catch { case e: Exception => List() }
     }
 }
 
