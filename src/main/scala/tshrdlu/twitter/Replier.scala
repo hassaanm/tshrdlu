@@ -51,6 +51,7 @@ class BusinessReplier extends BaseReplier {
     lazy val nytimesFile = scala.io.Source.fromFile("nytimes.properties").getLines.toList
     lazy val nytimesApiKey : String = nytimesFile(0)
     lazy val updateRegex = """UPDATE \(([A-Z]+)\): (.+[A-Za-z]+.+)""".r
+    lazy val confusedQuery = "Can you provide the stock symbol?"
     implicit val timeout = Timeout(10 seconds)
 
     lazy val defaultResponses = List(
@@ -92,20 +93,16 @@ class BusinessReplier extends BaseReplier {
             return getBusinessTweet(symbol, compName, maxLength)
         }
         else {
-            val confusedQuery = " Can you provide the stock symbol?"
-            var confusingWords = extractedCompanies._2
+            val confusingWords = extractedCompanies._2
             if (confusingWords.size == 0) {
                 if(importantWords.size == 0) {
                     val random_index = rand.nextInt(defaultResponses.size);
                     val randomResponse = defaultResponses(random_index);
-                    return Future(Seq(randomResponse + confusedQuery))
+                    return Future(Seq(randomResponse + " " + confusedQuery))
                 }
-                confusingWords = importantWords
-                val s = if(confusingWords.size > 1) "s" else ""
-                return Future(Seq("I couldn't find a company with the word" + s + " \"" + confusingWords.take(2).mkString(", ") + "\"." + confusedQuery))
+                return getConfusedTweet("I couldn't find a company with the word", importantWords, maxLength)
             }
-            val s = if(confusingWords.size > 1) "s" else ""
-            return Future(Seq("I found multiple companies with the word" + s + " \"" + confusingWords.take(2).mkString(", ") + "\"." + confusedQuery))
+            return getConfusedTweet("I found multiple companies with the word", confusingWords, maxLength)
         }
     }
 
@@ -116,9 +113,20 @@ class BusinessReplier extends BaseReplier {
 
         val statusesFuture: Future[Seq[Status]] = Future.sequence(statusList).map(_.toSeq.flatten)
 
-        return statusesFuture
+        statusesFuture
             .map(status => extractText(status, symbol, compName))
             .map(_.filter(_.length <= maxLength))
+    }
+
+    def getConfusedTweet(beginningText: String, confusingWords: List[String], maxLength: Int): Future[Seq[String]] = {
+        val s = if(confusingWords.size > 1) "s" else ""
+        val actualBegText = beginningText + s + " \""
+        val actualEndText = ".\" " + confusedQuery
+        val maxLen = maxLength - (actualBegText + actualEndText).size
+        val confusingWordsText = confusingWords.mkString(", ")
+        val actualConfWordsText = if(confusingWordsText.size <= maxLen) confusingWordsText
+            else (confusingWordsText.substring(0, maxLen - 3) + "...")
+        Future(Seq(actualBegText + actualConfWordsText + actualEndText))
     }
 
     /* The first element of the tuple indicated whether extraction was successful
