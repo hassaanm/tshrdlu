@@ -50,6 +50,8 @@ class BusinessReplier extends BaseReplier {
     import akka.pattern._
     import akka.util._
     import java.util.Random
+    import nak.NakContext._
+    import nak.core._
 
     implicit val timeout = Timeout(10 seconds)
     lazy val polarity = new Polarity()
@@ -80,6 +82,7 @@ class BusinessReplier extends BaseReplier {
       "I'm all business."
       )
     lazy val rand = new Random();
+    lazy val classifier = loadClassifier[LiblinearClassifier with FeaturizedClassifier[String, String]]("src/main/resources/BusinessArticle.classifier")
     
     /**
      * Given a tweet that was directed to the bot, return a reply tweet.
@@ -239,11 +242,16 @@ class BusinessReplier extends BaseReplier {
         val (price, outlook) = symbolInfo(yahooFixedSymbol)
 
         // use articles to determine price outlook
+        def maxLabelPpa = maxLabel(classifier.labels) _
         val articles = getArticles(company)
+        val predictions = for(text <- articles) yield maxLabelPpa(classifier.evalRaw(text))
+        val priceOutlook = "Outlook: " + (if (predictions.length > 0)
+                        predictions.groupBy(x=>x).mapValues(x=>x.length).toSeq.sortBy(-_._2).head._1
+                    else
+                         (if (outlook > 0.7) "Good" else if (outlook < 0.3) "Bad" else "OK")) + ", "
 
         val symbolText = " (" + symbol + "), "
         val lastPrice = "Price: " + price + ", "
-        val priceOutlook = "Outlook: " + (if (outlook > 0.7) "Good" else if (outlook < 0.3) "Bad" else "OK") + ", "
         val sentiment = "Opinion: " + (if (avgSentiment > 0.01) "Good" else if (avgSentiment < -0.01) "Bad" else "OK") + ", "
         val yahooLink = "Info: " + shortenURL("""http://finance.yahoo.com/q?s=""" + yahooFixedSymbol)
         
