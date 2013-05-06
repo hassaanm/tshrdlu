@@ -302,6 +302,7 @@ object TWSSModel {
 
 object CompanyData {
     import tshrdlu.util.AlphaNumericTokenizer
+    import scala.collection.mutable
 
     lazy val resourceDir = "/companies/"
     def getCompData(filename: String) =
@@ -312,8 +313,9 @@ object CompanyData {
                 (parts(0), parts(1).replaceAll("\"", ""))
             }).toMap
             
-    lazy val symToComp = getCompData("nasdaq.csv") ++ getCompData("nyse.csv")
-    lazy val invertedIndex = (for ((sym, comp) <- symToComp) yield {
+    lazy val symToComp: Map[String, String] = getCompData("nasdaq.csv") ++ getCompData("nyse.csv")
+    lazy val invertedIndex: mutable.Map[String, Set[String]] = collection.mutable.Map() ++
+        (for ((sym, comp) <- symToComp) yield {
             val symMap = (sym.toLowerCase, sym)
             val splitCompName = AlphaNumericTokenizer(comp)
             (for (word <- splitCompName) yield (word.toLowerCase(), sym.trim())) ++ List(symMap)
@@ -321,6 +323,15 @@ object CompanyData {
         .groupBy(_._1)
         .mapValues(_.map(_._2).toSet)
         .toMap
+
+    def updateIndex(symbol: String, compName: String): List[(String, Set[String])] = {
+        val splitCompName = AlphaNumericTokenizer(compName)
+        val indexUpdates = (for(word <- splitCompName) yield {
+            val update = (word, invertedIndex.getOrElse(word, Set[String]()) + symbol)
+            invertedIndex += update
+            update })
+        return indexUpdates
+    }
         
     def main (args: Array[String]) {
         println(invertedIndex.toList.sortBy(_._1).mkString(", "))

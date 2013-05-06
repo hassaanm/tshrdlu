@@ -50,6 +50,7 @@ class BusinessReplier extends BaseReplier {
     lazy val bitlyLogin : String = bitlyFile(1)
     lazy val nytimesFile = scala.io.Source.fromFile("nytimes.properties").getLines.toList
     lazy val nytimesApiKey : String = nytimesFile(0)
+    lazy val updateRegex = """UPDATE \(([A-Z]+)\): (.+[A-Za-z]+.+)""".r
     implicit val timeout = Timeout(10 seconds)
 
     lazy val defaultResponses = List(
@@ -69,7 +70,14 @@ class BusinessReplier extends BaseReplier {
     
     def getReplies(status: Status, maxLength: Int = 140): Future[Seq[String]] = {
         log.info("I'm all business.")
-        val text = stripLeadMention(status.getText).toLowerCase()
+        val text = stripLeadMention(status.getText)
+        if(text.matches(updateRegex.toString)){
+            // We matched the special syntax that tells us to update our inverted index
+            val updateRegex(sym, comp) = text
+            val updates = CompanyData.updateIndex(sym, comp)
+            log.info("Updating index" + updates.mkString(", "))
+            return getBusinessTweet(sym, comp, maxLength)
+        }
         val importantWords = AlphaNumericTokenizer(text)
                 .filterNot(English.stopwords.contains(_))
         log.info("Searching for companies with the words: " + importantWords.mkString(" "))
@@ -81,30 +89,36 @@ class BusinessReplier extends BaseReplier {
             val symbol = companies.head
             val compName = CompanyData.symToComp.getOrElse(symbol, "")
 
-            val statusList =
-                List(symbol, compName)
-                .map(w => (context.parent ? SearchTwitter(new Query(w))).mapTo[Seq[Status]])
-
-            val statusesFuture: Future[Seq[Status]] = Future.sequence(statusList).map(_.toSeq.flatten)
-
-            return statusesFuture
-                .map(status => extractText(status, symbol, compName))
-                .map(_.filter(_.length <= maxLength))
+            return getBusinessTweet(symbol, compName, maxLength)
         }
         else {
+            val confusedQuery = " Can you provide the stock symbol?"
             var confusingWords = extractedCompanies._2
             if (confusingWords.size == 0) {
                 if(importantWords.size == 0) {
                     val random_index = rand.nextInt(defaultResponses.size);
                     val randomResponse = defaultResponses(random_index);
-                    return Future(Seq(randomResponse + " Can you provide the stock symbol?"))
+                    return Future(Seq(randomResponse + confusedQuery))
                 }
                 confusingWords = importantWords
+                val s = if(confusingWords.size > 1) "s" else ""
+                return Future(Seq("I couldn't find a company with the word" + s + " \"" + confusingWords.take(2).mkString(", ") + "\"." + confusedQuery))
             }
-            if(confusingWords.size > 1)
-                return Future(Seq("I couldn't find a company with the words \"" + confusingWords.take(2).mkString(" ") + "\". Can you provide the stock symbol?"))
-            return Future(Seq("I couldn't find a company with the word \"" + confusingWords.head + "\". Can you provide the stock symbol?"))
+            val s = if(confusingWords.size > 1) "s" else ""
+            return Future(Seq("I found multiple companies with the word" + s + " \"" + confusingWords.take(2).mkString(", ") + "\"." + confusedQuery))
         }
+    }
+
+    def getBusinessTweet(symbol: String, compName: String, maxLength: Int): Future[Seq[String]] = {
+        val statusList =
+            List(symbol, compName)
+            .map(w => (context.parent ? SearchTwitter(new Query(w))).mapTo[Seq[Status]])
+
+        val statusesFuture: Future[Seq[Status]] = Future.sequence(statusList).map(_.toSeq.flatten)
+
+        return statusesFuture
+            .map(status => extractText(status, symbol, compName))
+            .map(_.filter(_.length <= maxLength))
     }
 
     /* The first element of the tuple indicated whether extraction was successful
@@ -129,11 +143,11 @@ class BusinessReplier extends BaseReplier {
         if(topMentionedCompanies.length == 1 || topMentionedCompanies.length == 0)
             return (topMentionedCompanies.length == 1, topMentionedCompanies)
         // We are confused, determine which words confused us
-        val allCompanies = topMentionedCompanies
-            .flatMap(CompanyData.symToComp.get)
-            .map(_.toLowerCase.replaceAll("[^a-zA-Z]+", ""))
-            .mkString(" ")
-        val confusingWords = words.filter(allCompanies.contains).toList
+        val allCompanies = AlphaNumericTokenizer(topMentionedCompanies
+            .map(x => CompanyData.symToComp.getOrElse(x, "") + " " + x)
+            .mkString(" "))
+        log.info(allCompanies.mkString(", "))
+        val confusingWords = words.filter(allCompanies.contains)
         log.info("Confusing words: " + confusingWords.mkString(", "))
         (false, confusingWords)
     }
@@ -155,7 +169,7 @@ class BusinessReplier extends BaseReplier {
 
         val sentimentVals = for (tweet <- useableTweets) yield getSentiment(tweet)
         val avgSentiment = sentimentVals.sum / sentimentVals.length
-        val yahooFixedSymbol = symbol.replaceAll("^", "-P")
+        val yahooFixedSymbol = symbol.replaceAll("\\^", "-P")
         val (price, outlook) = symbolInfo(yahooFixedSymbol)
 
         // use articles to determine price outlook
@@ -195,19 +209,31 @@ class BusinessReplier extends BaseReplier {
     }
     
     def stockInfo(jsonData: Option[Any], key: String): String = {
-        (jsonData match { case Some(m: Map[String, Any]) => m("query") match { case n: Map[String, Any] => n("results") match { case o: Map[String, Any] => o("quote") match { case p: Map[String, Any] => p(key) } } } }).toString
+        jsonData match { 
+            case Some(m: Map[String, Any]) => m("query") match {
+                case n: Map[String, Any] => n("results") match {
+                    case o: Map[String, Any] => o("quote") match {
+                        case p: Map[String, Any] => p(key) match {
+                            case s: String => s
+                            case null => "0.0"
+                        }
+                    }
+                }
+            }
+        }
     }
 
     def symbolInfo(symbol: String): (Double, Double) = {
         val url = """http://query.yahooapis.com/v1/public/yql?env=http%3A%2F%2Fdatatables.org%2Falltables.env&format=json&q=select%20*%20from%20yahoo.finance.quote%20where%20symbol%20in%20(%22""" + symbol + """%22)"""
-
+        log.info(symbol)
+        log.info(url)
         val json = scala.io.Source.fromURL(url).mkString
         val jsonData = scala.util.parsing.json.JSON.parseFull(json)
-
+        log.info(jsonData.toString)
         val price = stockInfo(jsonData, "LastTradePriceOnly").toDouble
         val yearLow = stockInfo(jsonData, "YearLow").toDouble
         val yearHigh = stockInfo(jsonData, "YearHigh").toDouble
-
+log.info("13")
         val range = yearHigh - yearLow
         val outlook = (price - yearLow) / range
 
