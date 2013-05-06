@@ -38,7 +38,15 @@ object SimpleTokenizer {
     .toIndexedSeq
 }
 
+/**
+ * A tokenizer that pull off all characters except for letters and numbers and
+ * also converts to lowercase.
+ */
 object AlphaNumericTokenizer {
+  /**
+   * @param text the text to tokenize
+   * @return A List[String] with one token per element.
+   */
 	def apply(text: String): List[String] = text
 		.replaceAll("[^a-zA-Z0-9]+", " ")
 		.split(" ")

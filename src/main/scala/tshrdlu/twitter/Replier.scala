@@ -32,6 +32,13 @@ trait BaseReplier extends Actor with ActorLogging {
 
 }
 
+/**
+ * Given a tweet that was directed to the bot, return a reply tweet that contains
+ * information about one company that was mentioned. If multiple companies were
+ * mentioned or no companies were mentioned, the bot instead asks for clarification.
+ * A special syntax is available to update our inverted index and add new company
+ * information. Special syntax: "UPDATE (SYMBOL): Company name"
+ */
 class BusinessReplier extends BaseReplier {
     import Bot._
     import TwitterRegex._
@@ -44,16 +51,21 @@ class BusinessReplier extends BaseReplier {
     import akka.util._
     import java.util.Random
 
+    implicit val timeout = Timeout(10 seconds)
     lazy val polarity = new Polarity()
+    // File containing Bit.ly API key and username
     lazy val bitlyFile = scala.io.Source.fromFile("bitly.properties").getLines.toList
     lazy val bitlyApiKey : String = bitlyFile(0)
     lazy val bitlyLogin : String = bitlyFile(1)
+    // File containing New York Times API key
     lazy val nytimesFile = scala.io.Source.fromFile("nytimes.properties").getLines.toList
     lazy val nytimesApiKey : String = nytimesFile(0)
+    // Regex to match our special syntax
     lazy val updateRegex = """UPDATE \(([A-Z]+)\): (.+[A-Za-z]+.+)""".r
+    // Text to tweet when our bot is unsure which company was mentioned
     lazy val confusedQuery = "Can you provide the stock symbol?"
-    implicit val timeout = Timeout(10 seconds)
-
+    // Tweets for when all else fails
+    // Should only be tweeted if status only contains stopwords
     lazy val defaultResponses = List(
       "I'm not sure.",
       "I'm confused.",
@@ -69,6 +81,12 @@ class BusinessReplier extends BaseReplier {
       )
     lazy val rand = new Random();
     
+    /**
+     * Given a tweet that was directed to the bot, return a reply tweet.
+     * @param status the status to be replied to
+     * @param maxLength the maximum length the tweet can be
+     * @return A Future[Seq[String]] containing the reply tweet.
+     */
     def getReplies(status: Status, maxLength: Int = 140): Future[Seq[String]] = {
         log.info("I'm all business.")
         val text = stripLeadMention(status.getText)
@@ -82,9 +100,10 @@ class BusinessReplier extends BaseReplier {
         val importantWords = AlphaNumericTokenizer(text)
                 .filterNot(English.stopwords.contains(_))
         log.info("Searching for companies with the words: " + importantWords.mkString(" "))
-        val extractedCompanies = extractCompanyName(importantWords)
+        val extractedCompanies = extractCompanySymbols(importantWords)
         val successful = extractedCompanies._1
         if (successful) {
+            // We extracted exactly one company name
             val companies = extractedCompanies._2
             log.info("Companies: " + companies.mkString(","))
             val symbol = companies.head
@@ -93,6 +112,7 @@ class BusinessReplier extends BaseReplier {
             return getBusinessTweet(symbol, compName, maxLength)
         }
         else {
+            // We found multiple or no companies
             val confusingWords = extractedCompanies._2
             if (confusingWords.size == 0) {
                 if(importantWords.size == 0) {
@@ -106,6 +126,13 @@ class BusinessReplier extends BaseReplier {
         }
     }
 
+    /**
+     * Get a tweet containing information about the desired company.
+     * @param symbol the stock symbol of the company
+     * @param compName the name of the company
+     * @param maxLength the maximum length the tweet can be
+     * @return a Future[Seq[String]] that contains the tweet
+     */
     def getBusinessTweet(symbol: String, compName: String, maxLength: Int): Future[Seq[String]] = {
         val statusList =
             List(symbol, compName)
@@ -114,27 +141,38 @@ class BusinessReplier extends BaseReplier {
         val statusesFuture: Future[Seq[Status]] = Future.sequence(statusList).map(_.toSeq.flatten)
 
         statusesFuture
-            .map(status => extractText(status, symbol, compName))
+            .map(status => extractText(status, symbol, compName, maxLength))
             .map(_.filter(_.length <= maxLength))
     }
 
+    /**
+     * Get a tweet indicating that the bot is confused.
+     * @param beginningText the text to begin the tweet with
+     * @param confusingWords a list of words that confused the bot
+     * @param maxLength the maximum length the tweet can be
+     * @return a Future[Seq[String]] that contains the tweet
+     */
     def getConfusedTweet(beginningText: String, confusingWords: List[String], maxLength: Int): Future[Seq[String]] = {
         val s = if(confusingWords.size > 1) "s" else ""
         val actualBegText = beginningText + s + " \""
         val actualEndText = ".\" " + confusedQuery
         val maxLen = maxLength - (actualBegText + actualEndText).size
         val confusingWordsText = confusingWords.mkString(", ")
-        val actualConfWordsText = if(confusingWordsText.size <= maxLen) confusingWordsText
-            else (confusingWordsText.substring(0, maxLen - 3) + "...")
+        // Safety buffer of one character.
+        val actualConfWordsText = if(confusingWordsText.size < maxLen) confusingWordsText
+            else (confusingWordsText.substring(0, maxLen - 4) + "...")
         Future(Seq(actualBegText + actualConfWordsText + actualEndText))
     }
 
-    /* The first element of the tuple indicated whether extraction was successful
-     * If there is an obvious company mentioned, returns a list of length 1 with the company symbol
-     * If there are multiple options, returns a list of the words that are most confusing
-     * If there are no companies found, returns an empty list
+    /**
+     * Extracts a list of possible stock symbols or confusing words from a list of words.
+     * @param words A list of words that might be the names of companies
+     * @return The first element of the tuple indicated whether extraction was successful
+     *         If there is an obvious company mentioned, returns a list of length 1 with the company symbol
+     *         If there are multiple options, returns a list of the words that are most confusing
+     *         If there are no companies found, returns an empty list
      */
-    def extractCompanyName(words: List[String]): (Boolean, List[String]) = {
+    def extractCompanySymbols(words: List[String]): (Boolean, List[String]) = {
         val companyMentions = (for(word <- words) yield CompanyData.invertedIndex.get(word))
             .flatten
             .flatten
@@ -160,10 +198,30 @@ class BusinessReplier extends BaseReplier {
         (false, confusingWords)
     }
 
-    def wordImportance(word: String): Double =
-        CompanyData.invertedIndex.getOrElse(word, List[String]()).size.toDouble / CompanyData.invertedIndex.size
+    /**
+     * Measures the importance of a word by dividing the total number of words in
+     * the inverted index by the number of companies with that word in their name.
+     * Words that occur less frequently will be more important.
+     * @param word the word to be measured
+     * @return the importance of the word
+     */
+    def wordImportance(word: String): Double = {
+        val numOccurrences = CompanyData.invertedIndex.getOrElse(word, List[String]()).size.toDouble
+        if(numOccurrences == 0)
+            return 0
+        CompanyData.invertedIndex.size / numOccurrences
+    }
 
-    def extractText(statusList: Seq[Status], symbol: String, company: String): Seq[String] = {
+    /**
+     * Analyzes tweets about a company, and stock price info from Yahoo! Finance to
+     * generate a tweet containing information about a company's stock.
+     * @param statusList a sequence containing tweets about a company
+     * @param symbol the symbol of the company
+     * @param company the name of the company
+     * @param maxLength the maximum length the tweet can be
+     * @return A sequence containing a tweet with info about the desired company.
+     */
+    def extractText(statusList: Seq[Status], symbol: String, company: String, maxLength: Int): Seq[String] = {
         val useableTweets = statusList
             .map(_.getText)
             .map {
@@ -183,7 +241,7 @@ class BusinessReplier extends BaseReplier {
         // use articles to determine price outlook
         val articles = getArticles(company)
 
-        val intro = company.take(40) + " (" + symbol + "), "
+        val symbolText = " (" + symbol + "), "
         val lastPrice = "Price: " + price + ", "
         val priceOutlook = "Outlook: " + (if (outlook > 0.7) "Good" else if (outlook < 0.3) "Bad" else "OK") + ", "
         val sentiment = "Opinion: " + (if (avgSentiment > 0.01) "Good" else if (avgSentiment < -0.01) "Bad" else "OK") + ", "
@@ -191,11 +249,24 @@ class BusinessReplier extends BaseReplier {
         
         log.info("Sentiment: " + avgSentiment)
 
-        val response = intro + lastPrice + priceOutlook + sentiment + yahooLink
+        val infoText = symbolText + lastPrice + priceOutlook + sentiment + yahooLink
+        val maxLen = maxLength - (infoText).size
+        // Safety buffer of one character.
+        val companyText = if(company.size < maxLen) company
+            else (company.substring(0, maxLen - 4) + "...")
+
+        val response = companyText + infoText
         log.info("SentimentReplier responding with: " + response)
         Seq(response)
     }
 
+    /**
+     * Estimates the sentiment of a text. Iterates through the words with a sliding
+     * window two wide. If the first word in the window is in our negationsWords set,
+     * the polarity of the second word is inversed.
+     * @param text the text
+     * @return The estimated sentiment of the text.
+     */
     def getSentiment(text: String): Double = {
         val words = AlphaNumericTokenizer(text)
         var numPos = if(polarity.posWords.contains(words(0))) 1 else 0
@@ -231,6 +302,12 @@ class BusinessReplier extends BaseReplier {
         }
     }
 
+    /**
+     * Given a stock symbol, return the current price and our prediction of
+     * the future outlook for the stock.
+     * @param symbol the stock symbol
+     * @return a tuple: (current price, outlook prediction)
+     */
     def symbolInfo(symbol: String): (Double, Double) = {
         val url = """http://query.yahooapis.com/v1/public/yql?env=http%3A%2F%2Fdatatables.org%2Falltables.env&format=json&q=select%20*%20from%20yahoo.finance.quote%20where%20symbol%20in%20(%22""" + symbol + """%22)"""
         log.info(symbol)
@@ -248,6 +325,11 @@ log.info("13")
         (price, outlook)
     }
 
+    /**
+     * Given a url, returns the result of shortening the url with Bit.ly.
+     * @param longUrl the url to be shortened
+     * @return a new Bit.ly url pointing to the same web address as longUrl
+     */
     def shortenURL(longUrl: String): String = {
         val link ="http://api.bit.ly/v3/shorten?format=txt&login="+bitlyLogin+"&apiKey="+bitlyApiKey+"&longUrl="+longUrl
         try {

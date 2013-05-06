@@ -76,6 +76,8 @@ object English extends Language("eng") {
   lazy val vocabularyTWSS = getLexicon("TWSSVocab.txt");
   lazy val vocabulary = getLexicon("masc_vocab.txt.gz") ++ stopwords
   lazy val thesaurus = Thesaurus.read(Resource.asStream("/lang/eng/lexicon/oo_eng_thesaurus.gz"))
+  // words that might indicate the polarity of the words that follow should be flipped
+  // example: no, not, *n't
   lazy val negationWords = getLexicon("negationWords.txt")
 
   def isEnglish(text: String) = {
@@ -300,21 +302,33 @@ object TWSSModel {
   def apply() : Model = model
 }
 
+/**
+ * An object that manages information from resource files nasdaq.csv and nyse.csv
+ */
 object CompanyData {
     import tshrdlu.util.AlphaNumericTokenizer
     import scala.collection.mutable
 
     lazy val resourceDir = "/companies/"
-    def getCompData(filename: String) =
+
+    /**
+     * Parses simple csv files with format: SYMBOL,"COMPANY NAME"
+     * @param filename the name of the resource file
+     * @return A Map[String, String] that maps stock symbols to company names
+     */
+    def getCompData(filename: String): Map[String, String] =
         Resource.asSource(resourceDir+filename)
             .getLines
             .map(l => {
                 val parts = l.split(",", 2)
                 (parts(0), parts(1).replaceAll("\"", ""))
             }).toMap
-            
-    lazy val symToComp: Map[String, String] = getCompData("nasdaq.csv") ++ getCompData("nyse.csv")
-    lazy val invertedIndex: mutable.Map[String, Set[String]] = collection.mutable.Map() ++
+    
+    // A map of stock symbols to company names
+    lazy val symToComp: mutable.Map[String, String] = mutable.Map() ++ getCompData("nasdaq.csv") ++ getCompData("nyse.csv")
+    // A map that takes a word to a list of stock symbols with that word in their
+    // corresponding company's name
+    lazy val invertedIndex: mutable.Map[String, Set[String]] = mutable.Map() ++
         (for ((sym, comp) <- symToComp) yield {
             val symMap = (sym.toLowerCase, sym)
             val splitCompName = AlphaNumericTokenizer(comp)
@@ -324,15 +338,25 @@ object CompanyData {
         .mapValues(_.map(_._2).toSet)
         .toMap
 
+    /**
+     * Updates our inverted index with new information
+     * @param symbol the stock symbol of the company
+     * @param compName the name of the company
+     * @return A list of the updates that were made to invertedIndex
+     */
     def updateIndex(symbol: String, compName: String): List[(String, Set[String])] = {
         val splitCompName = AlphaNumericTokenizer(compName)
         val indexUpdates = (for(word <- splitCompName) yield {
             val update = (word, invertedIndex.getOrElse(word, Set[String]()) + symbol)
             invertedIndex += update
             update })
+        symToComp += ((symbol, compName))
         return indexUpdates
     }
-        
+    
+    /**
+     * Main method used for testing
+     */
     def main (args: Array[String]) {
         println(invertedIndex.toList.sortBy(_._1).mkString(", "))
     }
