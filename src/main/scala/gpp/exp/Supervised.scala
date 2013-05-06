@@ -8,11 +8,22 @@ import nak.liblinear.LiblinearConfig
 import nak.NakContext._
 import scala.xml.Elem
 
+/** The supervised classifier based on L2-regularized logistic regression. */
 object Supervised {
 
     lazy val stemmer = new PorterStemmer
 
-    def apply(train: List[Elem], eval: List[Elem], costValue: Double, extended: Boolean, detailed: Boolean) {
+    /** Runs the supervised classifier
+      *
+      * @param train a list of XML elements containing the training data
+      * @param eval a list of XML elements containing the testing data
+      * @param costValue the cost value of the classifier
+      * @param extended boolean to determine which featurizer to use (basic or extended)
+      * @param detailed boolean to display verbose output
+      * @param classifierFile string of the file name the classifier should save to
+               classifier only saves to file if the length of classifierFile is greater than 0
+      */
+    def apply(train: List[Elem], eval: List[Elem], costValue: Double, extended: Boolean, detailed: Boolean, classifierFile: String) {
         val trainLabels = (for(file <- train) yield
             (file \\ "item").map(item => (item \ "@label").text).toList
         ).flatten
@@ -64,8 +75,16 @@ object Supervised {
         println(cm)
         if(detailed)
             println(cm.detailedOutput)
+
+        if(classifierFile.length > 0)
+            saveClassifier(classifier, classifierFile)
     }
 
+    /** Determines the sentiment polarity of provided text
+      *
+      * @param text string containing the text, which the method determines the sentiment of
+      * @return string of the sentiment polarity of the text
+      */
     def getSentiment(text: String): String = {
         val tokens = Twokenize(text)
         val polarity = English.getPolarity(tokens)

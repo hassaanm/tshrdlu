@@ -5,9 +5,13 @@ import org.apache.log4j.Logger
 import nak.util.ConfusionMatrix
 import scala.xml.XML
 
-
+/** Main class that runs the classifiers. */
 object Gpp {
 
+    /** Runs the corresponding classifiers based on input.
+      * 
+      * @param args the arguments from the command line
+      */
     def main(args: Array[String]) {
         // parse options and automatically handle help option
         val opts = GppOpts(args)
@@ -31,8 +35,8 @@ object Gpp {
         opts.method() match {
             case "majority" => Majority(trainFiles, evalFiles, opts.detailed())
             case "lexicon" => Lexicon(evalFiles, opts.detailed())
-            case "L2R_LR" => Supervised(trainFiles, evalFiles, opts.cost(), opts.extended(), opts.detailed())
-            case "business" => Business(trainFiles, evalFiles, opts.cost(), opts.detailed())
+            case "L2R_LR" => Supervised(trainFiles, evalFiles, opts.cost(), opts.extended(), opts.detailed(), opts.classifierFile())
+            case "business" => Business(trainFiles, evalFiles, opts.cost(), opts.detailed(), opts.classifierFile())
             case _ =>
         }
     }
@@ -55,6 +59,7 @@ object Gpp {
  *   -m, --method  <arg>     The type of solver to use. Possible values: majority,
  *                           lexicon, or any liblinear solver type.
  *                           (default = L2R_LR)
+ *   -f, --classifierFile    The file to save the classifier to for supervised and business classifiers.
  *   -t, --train  <arg>...   The files containing training events.
  *   -v, --verbose           
  *       --help              Show this message
@@ -76,6 +81,7 @@ For usage see below:
     val eval = opt[List[String]]("eval", short='e', descr="The files containing evalualation events.")
     val extended = opt[Boolean]("extended", short='x', default=Some(false), descr="Use extended features.")
     val method = opt[String]("method", short='m', default=Some("L2R_LR"), descr="The type of solver to use. Possible values: majority, lexicon, or any liblinear solver type.")
+    val classifierFile = opt[String]("classifierFile", short='f', default=Some(""), descr="The file to output the classifier to.")
     val train = opt[List[String]]("train", short='t', descr="The files containing training events.")
     val verbose = opt[Boolean]("verbose", short='v', default=Some(false))
     val help = opt[Boolean]("help", noshort=true, descr="Show this message")

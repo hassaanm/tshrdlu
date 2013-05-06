@@ -3,8 +3,15 @@ package gpp.exp
 import nak.util.ConfusionMatrix
 import scala.xml.Elem
 
+/** The majority classifier, which uses the majority label for everything. */
 object Majority {
 
+    /** Runs the majority classifier
+      *
+      * @param train a list of XML elements containing the training data
+      * @param eval a list of XML elements containing the testing data
+      * @param detailed boolean to display verbose output
+      */
     def apply(train: List[Elem], eval: List[Elem], detailed: Boolean) {
         val trainLabels = (for(file <- train) yield
             (file \\ "item").map(item => (item \ "@label").text).toList
