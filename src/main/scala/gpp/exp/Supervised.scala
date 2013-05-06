@@ -12,7 +12,7 @@ object Supervised {
 
     lazy val stemmer = new PorterStemmer
 
-    def apply(train: List[Elem], eval: List[Elem], costValue: Double, extended: Boolean, detailed: Boolean) {
+    def apply(train: List[Elem], eval: List[Elem], costValue: Double, extended: Boolean, detailed: Boolean, classifierFile: String) {
         val trainLabels = (for(file <- train) yield
             (file \\ "item").map(item => (item \ "@label").text).toList
         ).flatten
@@ -64,6 +64,9 @@ object Supervised {
         println(cm)
         if(detailed)
             println(cm.detailedOutput)
+
+        if(classifierFile.length > 0)
+            saveClassifier(classifier, classifierFile)
     }
 
     def getSentiment(text: String): String = {
