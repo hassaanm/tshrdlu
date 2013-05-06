@@ -8,10 +8,20 @@ import nak.liblinear.LiblinearConfig
 import nak.NakContext._
 import scala.xml.Elem
 
+/** The business classifier used to classify snippets of New York Times articles and their expected investment return. */
 object Business {
 
     lazy val stemmer = new PorterStemmer
 
+    /** Runs the business classifier
+      *
+      * @param train a list of XML elements containing the training data
+      * @param eval a list of XML elements containing the testing data
+      * @param costValue the cost value of the classifier
+      * @param detailed boolean to display verbose output
+      * @param classifierFile string of the file name the classifier should save to
+               classifier only saves to file if the length of classifierFile is greater than 0
+      */
     def apply(train: List[Elem], eval: List[Elem], costValue: Double, detailed: Boolean, classifierFile: String) {
         val trainLabels = (for(file <- train) yield
             (file \\ "item").map(item => (item \ "@label").text).toList
@@ -58,6 +68,11 @@ object Business {
             saveClassifier(classifier, classifierFile)
     }
 
+    /** Determines the sentiment polarity of provided text
+      *
+      * @param text string containing the text, which the method determines the sentiment of
+      * @return string of the sentiment polarity of the text
+      */
     def getSentiment(text: String): String = {
         val tokens = Twokenize(text)
         val polarity = English.getPolarity(tokens)

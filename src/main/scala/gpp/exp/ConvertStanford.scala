@@ -1,9 +1,14 @@
 package gpp.exp
 
+/** Converts the stanford dataset into a nak readable xml file. */
 object ConvertStanford {
 
     val labels = List("label", "tweetid", "", "target", "username")
 
+    /** Converts the provided file into a nak readable file.
+      *
+      * @param args list containing the file to convert
+      */
     def main(args : Array[String]) {
         val lines = scala.io.Source.fromFile(args(0)).getLines
         println("<?xml version=\"1.0\"?>\n<dataset>")

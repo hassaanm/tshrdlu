@@ -72,6 +72,14 @@ object English extends Language("eng") {
       .replaceAll("""http[^\s]+""","")
       .replaceAll("\\s+"," ")
 
+  /** Determines the sentiment polarity of the list of words.
+    *
+    * @param words list of strings, which the method determines the sentiment of
+    * @return Int for the sentiment polarity
+    *         0 for positive
+    *         1 for negative
+    *         2 for neutral
+    */
   def getPolarity(words: List[String]) = {
     val numPositive = words.count(positiveWords.contains(_))
     val numNegative = words.count(negativeWords.contains(_))

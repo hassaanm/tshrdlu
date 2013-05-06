@@ -5,9 +5,13 @@ import org.apache.log4j.Logger
 import nak.util.ConfusionMatrix
 import scala.xml.XML
 
-
+/** Main class that runs the classifiers. */
 object Gpp {
 
+    /** Runs the corresponding classifiers based on input.
+      * 
+      * @param args the arguments from the command line
+      */
     def main(args: Array[String]) {
         // parse options and automatically handle help option
         val opts = GppOpts(args)
@@ -55,6 +59,7 @@ object Gpp {
  *   -m, --method  <arg>     The type of solver to use. Possible values: majority,
  *                           lexicon, or any liblinear solver type.
  *                           (default = L2R_LR)
+ *   -f, --classifierFile    The file to save the classifier to for supervised and business classifiers.
  *   -t, --train  <arg>...   The files containing training events.
  *   -v, --verbose           
  *       --help              Show this message
