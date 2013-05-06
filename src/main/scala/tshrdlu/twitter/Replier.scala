@@ -244,7 +244,7 @@ class BusinessReplier extends BaseReplier {
         val symbolText = " (" + symbol + "), "
         val lastPrice = "Price: " + price + ", "
         val priceOutlook = "Outlook: " + (if (outlook > 0.7) "Good" else if (outlook < 0.3) "Bad" else "OK") + ", "
-        val sentiment = "Opinion: " + (if (avgSentiment > 0.01) "Good" else if (avgSentiment < -0.01) "Bad" else "OK") + ", "
+        val sentiment = "Opinion: " + (if (avgSentiment > 0.1) "Good" else if (avgSentiment < -0.1) "Bad" else "OK") + ", "
         val yahooLink = "Info: " + shortenURL("""http://finance.yahoo.com/q?s=""" + yahooFixedSymbol)
         
         log.info("Sentiment: " + avgSentiment)
@@ -288,18 +288,20 @@ class BusinessReplier extends BaseReplier {
     }
     
     def stockInfo(jsonData: Option[Any], key: String): String = {
-        jsonData match { 
-            case Some(m: Map[String, Any]) => m("query") match {
-                case n: Map[String, Any] => n("results") match {
-                    case o: Map[String, Any] => o("quote") match {
-                        case p: Map[String, Any] => p(key) match {
-                            case s: String => s
-                            case null => "0.0"
+        try{
+            jsonData match { 
+                case Some(m: Map[String, Any]) => m("query") match {
+                    case n: Map[String, Any] => n("results") match {
+                        case o: Map[String, Any] => o("quote") match {
+                            case p: Map[String, Any] => p(key) match {
+                                case s: String => s
+                                case null => "0.0"
+                            }
                         }
                     }
                 }
             }
-        }
+        } catch { case e: Exception => "0.0" }
     }
 
     /**
@@ -336,63 +338,71 @@ log.info("13")
             val shortUrl = scala.io.Source.fromURL(link).mkString
             shortUrl.trim
         } catch  {
-            case e: Exception => "http://yhoo.it/12GRbyV"
+            case e: Exception => "http://yhoo.it/12ah1H8"
         }
     }
 
     def articleCount(jsonData: Option[Any]): Int = {
-        jsonData match {
-            case Some(m: Map[String, Any]) => m("response") match {
-                case d: Map[String, Any] => d("docs") match {
-                    case l: List[Map[String, Any]] => l.length
+        try{
+            jsonData match {
+                case Some(m: Map[String, Any]) => m("response") match {
+                    case d: Map[String, Any] => d("docs") match {
+                        case l: List[Map[String, Any]] => l.length
+                    }
                 }
             }
-        }
+        } catch { case e: Exception => 0 }
     }
 
     def articleTitle(jsonData: Option[Any], index: Int): String = {
-        jsonData match {
-            case Some(m: Map[String, Any]) => m("response") match {
-                case d: Map[String, Any] => d("docs") match {
-                    case l: List[Map[String, Any]] => l(index) match {
-                        case a: Map[String, Any] => a("headline") match {
-                            case h: Map[String, String] => h("main")
+        try{
+            jsonData match {
+                case Some(m: Map[String, Any]) => m("response") match {
+                    case d: Map[String, Any] => d("docs") match {
+                        case l: List[Map[String, Any]] => l(index) match {
+                            case a: Map[String, Any] => a("headline") match {
+                                case h: Map[String, String] => h("main")
+                            }
                         }
                     }
                 }
             }
-        }
+        } catch { case e: Exception => "" }
     }
 
     def articleInfo(jsonData: Option[Any], index: Int, key: String): String = {
-        jsonData match {
-            case Some(m: Map[String, Any]) => m("response") match {
-                case d: Map[String, Any] => d("docs") match {
-                    case l: List[Map[String, Any]] => l(index) match {
-                        case a: Map[String, Any] => a(key) match {
-                            case s: String => s
-                            case null => "" 
+        try {
+            jsonData match {
+                case Some(m: Map[String, Any]) => m("response") match {
+                    case d: Map[String, Any] => d("docs") match {
+                        case l: List[Map[String, Any]] => l(index) match {
+                            case a: Map[String, Any] => a(key) match {
+                                case s: String => s
+                                case null => "" 
+                            }
                         }
                     }
                 }
             }
-        }
+        } catch { case e: Exception => "" }
     }
 
     def isArticleBusiness(jsonData: Option[Any], index: Int): Boolean = {
-        val section = jsonData match {
-            case Some(m: Map[String, Any]) => m("response") match {
-                case d: Map[String, Any] => d("docs") match {
-                    case l: List[Map[String, Any]] => l(index) match {
-                        case a: Map[String, Any] => a("section_name") match {
-                            case s: String => s
-                            case null => "" 
+        try{
+            val section = jsonData match {
+                case Some(m: Map[String, Any]) => m("response") match {
+                    case d: Map[String, Any] => d("docs") match {
+                        case l: List[Map[String, Any]] => l(index) match {
+                            case a: Map[String, Any] => a("section_name") match {
+                                case s: String => s
+                                case null => "" 
+                            }
                         }
                     }
                 }
             }
-        }
-        (section == "Business Day" || section == "Technology" || section == "Your Money")
+            (section == "Business Day" || section == "Technology" || section == "Your Money")
+        } catch { case e: Exception => false }
     }
 
     def getArticles(company: String): Seq[String] = {
@@ -412,9 +422,7 @@ log.info("13")
                                 }
                             }).filterNot(List("").contains)
             articles
-        } catch {
-            case e: Exception => List()
-        }
+        } catch { case e: Exception => List() }
     }
 }
 
