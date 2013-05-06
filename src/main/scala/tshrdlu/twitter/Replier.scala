@@ -103,7 +103,7 @@ class BusinessReplier extends BaseReplier {
             return getBusinessTweet(sym, comp, maxLength)
         }
         val importantWords = AlphaNumericTokenizer(text)
-                .filterNot(English.stopwords.contains(_))
+                .filterNot(x => English.stopwords.contains(x) && !English.negationWords.contains(x))
         log.info("Searching for companies with the words: " + importantWords.mkString(" "))
         val extractedCompanies = extractCompanySymbols(importantWords)
         val successful = extractedCompanies._1
@@ -249,10 +249,11 @@ class BusinessReplier extends BaseReplier {
         val predictions = for(text <- articles) yield maxLabelPpa(classifier.evalRaw(text))
         log.info(articles.mkString(", "))
         log.info(predictions.mkString(", "))
-        val priceOutlook = "Outlook: " + (if (predictions.length > 0)
+        val priceOutlook = "Outlook: " + 
+                    (if (predictions.length > 0)
                         predictions.groupBy(x=>x).mapValues(x=>x.length).toSeq.sortBy(-_._2).head._1
                     else
-                         (if (outlook > 0.7) "Good" else if (outlook < 0.3) "Bad" else "OK")) + ", "
+                        (if (outlook > 0.7) "Good" else if (outlook < 0.3) "Bad" else "OK")) + ", "
 
         val symbolText = " (" + symbol + "), "
         val lastPrice = "Price: " + price + ", "
