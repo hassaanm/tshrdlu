@@ -11,7 +11,9 @@ import scala.xml.Elem
 /** The business classifier used to classify snippets of New York Times articles and their expected investment return. */
 object Business {
 
+    import tshrdlu.util.{English, Polarity, AlphaNumericTokenizer}
     lazy val stemmer = new PorterStemmer
+    lazy val polarity = new Polarity()
 
     /** Runs the business classifier
       *
@@ -45,7 +47,8 @@ object Business {
                 val basicFeatures = for ((word, count) <- wordCounts)
                     yield FeatureObservation(word+"="+count)
                 val polarity = List(FeatureObservation("polarity="+getSentiment(input)))
-                (basicFeatures ++ polarity)
+                val dollarSign = List(FeatureObservation("dollar="+input.count(_ == '$')))
+                (basicFeatures ++ polarity ++ dollarSign)
             }
         }
 
@@ -73,13 +76,22 @@ object Business {
       * @param text string containing the text, which the method determines the sentiment of
       * @return string of the sentiment polarity of the text
       */
-    def getSentiment(text: String): String = {
-        val tokens = Twokenize(text)
-        val polarity = English.getPolarity(tokens)
-        return polarity match {
-            case 0 => "positive"
-            case 1 => "negative"
-            case 2 => "neutral"
+    def getSentiment(text: String): Double = {
+        val words = AlphaNumericTokenizer(text)
+        var numPos = if(polarity.posWords.contains(words(0))) 1 else 0
+        var numNeg = if(polarity.negWords.contains(words(0))) 1 else 0
+        for(wordSet <- words.sliding(2)){
+            val negate = English.negationWords.contains(wordSet(0))
+            if (polarity.posWords.contains(wordSet(1))){
+                if(negate) numNeg += 1
+                else numPos += 1
+            }
+            if (polarity.negWords.contains(wordSet(1))){
+                if(negate) numPos += 1
+                else numNeg += 1
+            }
         }
+        val sentiment = if (numPos != 0) { numPos.toDouble / (numPos + numNeg) } else 0
+        sentiment
     }
 }
