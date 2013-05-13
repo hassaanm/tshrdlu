@@ -39,20 +39,7 @@ object Business {
         val evalText = (for(file <- eval) yield
             (file \\ "content").map(_.text).toList
         ).flatten
-        /*
-        val companySentiments: mutable.Map[String, (Double, Int)] = mutable.Map[String, (Double, Int)]()
-        for(text <- trainText) {
-            val tokens = Twokenize(text)
-            val articleSentiment = simpleSentiment(tokens)
-            val companies = extractCompanySymbols(tokens)
-            for(company <- companies){
-                val (sentiment, num) = companySentiments.getOrElse(company, (0.0, 0))
-                val newNum = num + 1
-                val newSentiment = (sentiment * num + articleSentiment) / (newNum)
-                companySentiments.update(company, (newSentiment, newNum))
-            }
-        }
-        */
+
         lazy val featurizer = new Featurizer[String, String] {
             def apply(input: String) = {
                 val originalTokens = Twokenize(input)

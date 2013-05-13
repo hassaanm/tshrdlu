@@ -84,7 +84,7 @@ class BusinessReplier extends BaseReplier {
       "I'm all business."
       )
     lazy val rand = new Random();
-    lazy val classifier = loadClassifier[LiblinearClassifier with FeaturizedClassifier[String, String]]("src/main/resources/BusinessArticle.classifier")
+    lazy val outlookClassifier = loadClassifier[LiblinearClassifier with FeaturizedClassifier[String, String]]("src/main/resources/BusinessArticle.classifier")
     
     /**
      * Given a tweet that was directed to the bot, return a reply tweet.
@@ -244,9 +244,9 @@ class BusinessReplier extends BaseReplier {
         val (price, outlook) = symbolInfo(yahooFixedSymbol)
 
         // use articles to determine price outlook
-        def maxLabelPpa = maxLabel(classifier.labels) _
+        def maxLabelPpa = maxLabel(outlookClassifier.labels) _
         val articles = getArticles(company)
-        val predictions = for(text <- articles) yield maxLabelPpa(classifier.evalRaw(text))
+        val predictions = for(text <- articles) yield maxLabelPpa(outlookClassifier.evalRaw(text))
         log.info(articles.mkString(", "))
         log.info(predictions.mkString(", "))
         val priceOutlook = "Outlook: " + 

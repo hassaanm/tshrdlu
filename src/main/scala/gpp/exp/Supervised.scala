@@ -11,7 +11,9 @@ import scala.xml.Elem
 /** The supervised classifier based on L2-regularized logistic regression. */
 object Supervised {
 
-    lazy val stemmer = new PorterStemmer
+    import tshrdlu.util.{English, Polarity}
+    lazy val polarity = new Polarity()
+    lazy val stemmer = new PorterStemmer()
 
     /** Runs the supervised classifier
       *
@@ -54,7 +56,7 @@ object Supervised {
                 val wordCounts = tokens.groupBy(x=>x).mapValues(_.length).toList
                 val basicFeatures = for ((word, count) <- wordCounts)
                     yield FeatureObservation(word+"="+count)
-                val polarity = List(FeatureObservation("polarity="+getSentiment(input)))
+                val polarity = List(FeatureObservation("polarity="+sentimentLabel(getSentiment(Twokenize(input)))))
                 (basicFeatures ++ polarity)
             }
         }
@@ -80,18 +82,53 @@ object Supervised {
             saveClassifier(classifier, classifierFile)
     }
 
+    /** Determines the sentiment label based on the sentiment value
+      *
+      * @param sentiment double value of the sentiment
+      * @return string of the sentiment label
+      */
+    def sentimentLabel(sentiment: Double): String = {
+        if (sentiment > 0.1)
+            "positive"
+        else if (sentiment < -0.1)
+            "negative"
+        else
+            "neutral"
+    }
+
     /** Determines the sentiment polarity of provided text
       *
-      * @param text string containing the text, which the method determines the sentiment of
-      * @return string of the sentiment polarity of the text
+      * @param words list of strings containing the text to be analyzed
+      * @return double containing the sentiment of the text
       */
-    def getSentiment(text: String): String = {
-        val tokens = Twokenize(text)
-        val polarity = English.getPolarity(tokens)
-        return polarity match {
-            case 0 => "positive"
-            case 1 => "negative"
-            case 2 => "neutral"
+    def getSentiment(words: List[String]): Double = {
+        var numPos = words.take(1).count(polarity.posWords.contains)
+        var numNeg = words.take(1).count(polarity.negWords.contains)
+        for(wordSet <- words.sliding(2)){
+            val word = if (wordSet.size > 1) wordSet(1) else wordSet(0)
+            val negate = English.negationWords.contains(wordSet(0))
+            if (polarity.posWords.contains(word)){
+                if(negate) {
+                    numNeg += 1
+                }
+                else {
+                    numPos += 1
+                }
+            }
+            if (polarity.negWords.contains(word)){
+                if(negate) {
+                    numPos += 1
+                }
+                else {
+                    numNeg += 1
+                }
+            }
         }
+        val sentiment = (
+            if (numPos != 0 || numNeg != 0) { 
+                (numPos - numNeg).toDouble / (numPos + numNeg) 
+            }
+            else 0)
+        sentiment
     }
 }
