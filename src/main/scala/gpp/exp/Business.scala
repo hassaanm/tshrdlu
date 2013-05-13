@@ -144,9 +144,6 @@ object Business {
     def getSentiment(words: List[String]): Double = {
         var numPos = words.take(1).count(polarity.posWords.contains)
         var numNeg = words.take(1).count(polarity.negWords.contains)
-        //val negationWords = words.filter(polarity.negationWords.contains)
-        //val positiveWords = words.filter(polarity.posWords.contains)
-        //val negativeWords = words.filter(polarity.negWords.contains)
         for(wordSet <- words.sliding(2)){
             val negate = English.negationWords.contains(wordSet(0))
             if (polarity.posWords.contains(wordSet(1))){
@@ -171,11 +168,6 @@ object Business {
                 (numPos - numNeg).toDouble / (numPos + numNeg) 
             }
             else 0)
-        //println("Sentiment: " + sentiment)
-        //println("Negation words: " + negationWords)
-        //println("Positive words: " + positiveWords)
-        //println("Negative words: " + negativeWords)
-        //println(text + "\n")
         sentiment
     }
 

@@ -295,7 +295,7 @@ class BusinessReplier extends BaseReplier {
                 else numNeg += 1
             }
         }
-        val sentiment = if (numPos != 0) { numPos.toDouble / (numPos + numNeg) } else 0
+        val sentiment = if (numPos != 0  || numNeg != 0) { (numPos - numNeg).toDouble / (numPos + numNeg) } else 0
         log.info("Sentiment of \"" + text + "\" = " + sentiment)
         sentiment
     }
@@ -458,10 +458,10 @@ log.info("13")
             }
             val properDate = date.substring(0, 10) + "-" + date.substring(11,19)
             val articleDate = new SimpleDateFormat("yyyy-MM-dd-HH:mm:ss").parse(properDate)
-            val twoWeeks = new Date(new Date().getTime() - 1209600000)
+            val oneWeek = new Date(new Date().getTime() - 604800000)
 
             (section == "Business Day" || section == "Technology" || section == "Your Money") &&
-            (articleDate.after(twoWeeks))
+            (articleDate.after(oneWeek))
         } catch { case e: Exception => false }
     }
 
