@@ -64,7 +64,7 @@ object Business {
                 val wordCounts = tokens.groupBy(x=>x).mapValues(_.length).toList
                 val basicFeatures = for ((word, count) <- wordCounts)
                     yield FeatureObservation(word+"="+count)
-                val polarity = List(FeatureObservation("polarity="+simpleSentiment(tokens)))
+                val polarity = List(FeatureObservation("polarity="+sentimentLabel(getSentiment(tokens))))
                 //subjectivity doesn't work :/
                 val subjectivity = List(FeatureObservation("subjectivity="+getSubjectivity(tokens)))
                 val dollarSign = List(FeatureObservation("dollar="+input.count(_ == '$')))
@@ -98,6 +98,25 @@ object Business {
             saveClassifier(classifier, classifierFile)
     }
 
+    /** Determines the sentiment label based on the sentiment value
+      *
+      * @param sentiment double value of the sentiment
+      * @return string of the sentiment label
+      */
+    def sentimentLabel(sentiment: Double): String = {
+        if (sentiment > 0.1)
+            "positive"
+        else if (sentiment < -0.1)
+            "negative"
+        else
+            "neutral"
+    }
+
+    /** Extracts the possible company symbols based on a list of words
+      *
+      * @param words list of strings containing the words from article text
+      * @return list of strings containing possible company mentions
+      */
     def extractCompanySymbols(words: List[String]): List[String] = {
         val companyMentions = (for(word <- words) yield CompanyData.invertedIndex.get(word))
             .flatten
@@ -119,8 +138,8 @@ object Business {
 
     /** Determines the sentiment polarity of provided text
       *
-      * @param text string containing the text, which the method determines the sentiment of
-      * @return string of the sentiment polarity of the text
+      * @param words list of strings containing the text to be analyzed
+      * @return double containing the sentiment of the text
       */
     def getSentiment(words: List[String]): Double = {
         var numPos = words.take(1).count(polarity.posWords.contains)
@@ -160,20 +179,14 @@ object Business {
         sentiment
     }
 
+    /** Determines the subjectivity of provided text
+      *
+      * @param words list of strings containing the text to be analyzed
+      * @return double containing the subjectivity of the text
+      */
     def getSubjectivity(words: List[String]):Double = {
         val numPos = words.count(polarity.posWords.contains)
         val numNeg = words.count(polarity.negWords.contains)
         (numPos + numNeg) / words.size
-    }
-
-    def simpleSentiment(words: List[String]): Double = {
-        val numPos = words.count(polarity.posWords.contains)
-        val numNeg = words.count(polarity.negWords.contains)
-        val sentiment = (
-            if (numPos != 0 || numNeg != 0) { 
-                (numPos - numNeg).toDouble / (numPos + numNeg) 
-            }
-            else 0)
-        sentiment
     }
 }
